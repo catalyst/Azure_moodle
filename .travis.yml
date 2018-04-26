@@ -1,10 +1,6 @@
 dist: trusty
 sudo: off
 
-branches:
-  only:
-  - master
-
 language: node_js # Base language is Nodejs (used for liniting and basic validation).
 
 addons:

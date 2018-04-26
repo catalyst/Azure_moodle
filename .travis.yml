@@ -1,7 +1,7 @@
 dist: trusty
 sudo: off
 
-language: node_js # Base language is Nodejs (used for liniting and basic validation).
+language: node_js # Base language is NodeJS (used for linting and basic validation).
 
 addons:
   apt:

@@ -1,11 +1,12 @@
-import json
 import sys
+import time
 
 from azure.mgmt.resource import ResourceManagementClient
-from azure.mgmt.resource.resources.v2017_05_10.models import DeploymentMode
 from msrestazure.azure_active_directory import ServicePrincipalCredentials
 
 from travis.Configuration import Configuration
+
+DEPLOYMENT_NAME = 'azure-moodle-deployment-test'
 
 
 class DeploymentTester:
@@ -13,13 +14,19 @@ class DeploymentTester:
 
     def __init__(self):
         self.config = Configuration()
+
         self.credentials = None
+        """:type : ServicePrincipalCredentials"""
+
+        self.resource_client = None
+        """:type : ResourceManagementClient"""
 
     def run(self):
         self.check_configuration()
         self.login()
         self.create_resource_group()
-        self.validate()
+        # self.validate()
+        self.deploy()
         print('Job done!')
 
     def check_configuration(self):
@@ -40,29 +47,33 @@ class DeploymentTester:
 
     def create_resource_group(self):
         print('Creating group "{}" on "{}"...'.format(self.config.resource_group, self.config.location))
-        client = ResourceManagementClient(self.credentials, self.config.subscription_id)
-        client.resource_groups.create_or_update(self.config.resource_group,
-                                                {'location': self.config.location})
+        self.resource_client.resource_groups.create_or_update(self.config.resource_group,
+                                                              {'location': self.config.location})
 
     def validate(self):
         print('Validating deployment...')
-        with open('azuredeploy.json', 'r') as template_file_fd:
-            template = json.load(template_file_fd)
-        with open('azuredeploy.parameters.json', 'r') as template_file_fd:
-            parameters = json.load(template_file_fd)
-        parameters = parameters['parameters']
 
-        properties = {
-            'mode': DeploymentMode.incremental,
-            'template': template,
-            'parameters': parameters,
-        }
-
-        client = ResourceManagementClient(self.credentials, self.config.subscription_id)
-        validation = client.deployments.validate(self.config.resource_group,
-                                                 'azure-moodle-deployment-test',
-                                                 properties)
+        validation = self.resource_client.deployments.validate(self.config.resource_group,
+                                                               self.config.deployment_name,
+                                                               self.config.deployment_properties)
         if validation.error is not None:
             print("*** VALIDATION FAILED ***")
             print(validation.error.message)
             sys.exit(DeploymentTester.ERROR_VALIDATION_FAILED)
+
+    def deploy(self):
+        print('Running Azure build step...')
+        deployment = self.resource_client.deployments.create_or_update(self.config.resource_group,
+                                                                       self.config.deployment_name,
+                                                                       self.config.deployment_properties)
+        """:type : msrestazure.azure_operation.AzureOperationPoller"""
+        started = time.time()
+        while not deployment.done():
+            print('... after {} got status {}, still waiting ...'.format(self.elapsed(started), deployment.status()))
+            deployment.wait(60)
+        print("The waiting is over! After {} got status: {}".format(self.elapsed(started), deployment.status()))
+
+    def elapsed(self, since):
+        elapsed = int(time.time() - since)
+        elapsed = '{:02d}:{:02d}:{:02d}'.format(elapsed // 3600, (elapsed % 3600 // 60), elapsed % 60)
+        return elapsed
